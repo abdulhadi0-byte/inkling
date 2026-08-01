@@ -1,7 +1,11 @@
 /* =====================================================================
    Inkling — air-writing engine
-   MediaPipe Hands gives us 21 3D landmarks per hand, ~30x/sec.
-   We turn finger poses into gestures, and gestures into ink.
+   MediaPipe Hands gives us 21 3D landmarks per hand, ~15-30x/sec.
+   A separate requestAnimationFrame loop turns that into smooth 60fps
+   motion, and draws INCREMENTALLY (only the new bit of line each frame)
+   rather than replaying the whole stroke history every frame — the old
+   approach got slower the longer you drew; this one stays flat no
+   matter how long the canvas has been going.
 ===================================================================== */
 
 // ---------- DOM ----------
@@ -19,6 +23,8 @@ const saveBtn         = document.getElementById('saveBtn');
 const brushSize       = document.getElementById('brushSize');
 const skeletonToggle  = document.getElementById('skeletonToggle');
 const trailToggle     = document.getElementById('trailToggle');
+const kaleidoToggle   = document.getElementById('kaleidoToggle');
+const fadeToggle      = document.getElementById('fadeToggle');
 const swatchesEl      = document.getElementById('swatches');
 const helpToggle      = document.getElementById('helpToggle');
 const helpDrawer      = document.getElementById('helpDrawer');
@@ -39,6 +45,8 @@ let inkIndex = 0;
 let brushWidth = Number(brushSize.value);
 let showSkeleton = false;
 let showGlow = true;
+let kaleidoMode = false;
+let fadeMode = false;
 
 INKS.forEach((ink, i) => {
   const dot = document.createElement('button');
@@ -61,6 +69,14 @@ trailToggle.addEventListener('click', () => {
   showGlow = !showGlow;
   trailToggle.classList.toggle('active', showGlow);
 });
+kaleidoToggle.addEventListener('click', () => {
+  kaleidoMode = !kaleidoMode;
+  kaleidoToggle.classList.toggle('active', kaleidoMode);
+});
+fadeToggle.addEventListener('click', () => {
+  fadeMode = !fadeMode;
+  fadeToggle.classList.toggle('active', fadeMode);
+});
 helpToggle.addEventListener('click', () => helpDrawer.hidden = false);
 helpClose.addEventListener('click', () => helpDrawer.hidden = true);
 helpDrawer.addEventListener('click', (e) => { if (e.target === helpDrawer) helpDrawer.hidden = true; });
@@ -70,7 +86,7 @@ function resizeCanvases(){
   const w = viewport.clientWidth, h = viewport.clientHeight;
   [overlay, inkCanvas].forEach(c => {
     if (c.width !== w || c.height !== h){
-      // preserve ink drawing across resizes as best we can
+      // preserve existing ink pixels across resizes
       const prev = document.createElement('canvas');
       prev.width = c.width; prev.height = c.height;
       prev.getContext('2d').drawImage(c, 0, 0);
@@ -81,113 +97,116 @@ function resizeCanvases(){
 }
 window.addEventListener('resize', resizeCanvases);
 
-// ---------- Stroke storage ----------
-let strokes = [];       // finished + in-progress strokes: {color, width, points:[{x,y}]}
-let currentStroke = null;
-let particles = [];     // little sparkle bursts while drawing
-
-function beginStroke(x, y, color, width){
-  currentStroke = { color, width, points: [{x, y}] };
-  strokes.push(currentStroke);
-}
-function extendStroke(x, y){
-  if (!currentStroke) return;
-  currentStroke.points.push({x, y});
-  if (currentStroke.points.length > 4000) currentStroke.points.shift();
-}
-function endStroke(){ currentStroke = null; }
-
-function eraseNear(x, y, radius){
-  strokes.forEach(s => {
-    s.points = s.points.filter(p => Math.hypot(p.x - x, p.y - y) > radius);
-  });
-  strokes = strokes.filter(s => s.points.length > 1);
-}
-
 function clearAll(){
-  strokes = [];
-  currentStroke = null;
-  particles = [];
+  ictx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
+  particles.length = 0;
 }
 clearBtn.addEventListener('click', clearAll);
 
 saveBtn.addEventListener('click', () => {
-  // compose ink canvas onto a parchment-colored background for a clean export
+  // compose ink canvas onto a solid background for a clean export
   const out = document.createElement('canvas');
   out.width = inkCanvas.width; out.height = inkCanvas.height;
-  const octx2 = out.getContext('2d');
-  octx2.fillStyle = '#14101c';
-  octx2.fillRect(0, 0, out.width, out.height);
-  octx2.drawImage(inkCanvas, 0, 0);
+  const outCtx = out.getContext('2d');
+  outCtx.fillStyle = '#14101c';
+  outCtx.fillRect(0, 0, out.width, out.height);
+  outCtx.drawImage(inkCanvas, 0, 0);
   const link = document.createElement('a');
   link.download = `inkling-${Date.now()}.png`;
   link.href = out.toDataURL('image/png');
   link.click();
 });
 
-// ---------- Drawing render loop ----------
-function renderInk(){
-  ictx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
+// ---------- Incremental ink drawing ----------
+// Draws one new line segment straight onto the persistent ink canvas.
+// In kaleido mode, also stamps N rotated + mirrored copies around the
+// canvas centre for a live mandala effect. Cost is proportional to how
+// much you're actively drawing this frame, never to total history.
+const KALEIDO_FOLDS = 6;
+
+function drawSegment(x0, y0, x1, y1, color, width){
   ictx.lineCap = 'round';
   ictx.lineJoin = 'round';
+  ictx.strokeStyle = color;
+  ictx.lineWidth = width;
+  if (showGlow){
+    ictx.shadowColor = color;
+    ictx.shadowBlur = width * 1.8;
+  } else {
+    ictx.shadowBlur = 0;
+  }
 
-  strokes.forEach(s => {
-    if (s.points.length < 2) return;
+  if (!kaleidoMode){
     ictx.beginPath();
-    ictx.moveTo(s.points[0].x, s.points[0].y);
-    for (let i = 1; i < s.points.length - 1; i++){
-      const midX = (s.points[i].x + s.points[i+1].x) / 2;
-      const midY = (s.points[i].y + s.points[i+1].y) / 2;
-      ictx.quadraticCurveTo(s.points[i].x, s.points[i].y, midX, midY);
-    }
-    ictx.strokeStyle = s.color;
-    ictx.lineWidth = s.width;
-    if (showGlow){
-      ictx.shadowColor = s.color;
-      ictx.shadowBlur = s.width * 1.8;
-    } else {
-      ictx.shadowBlur = 0;
-    }
+    ictx.moveTo(x0, y0);
+    ictx.lineTo(x1, y1);
     ictx.stroke();
-  });
-  ictx.shadowBlur = 0;
+    return;
+  }
 
-  // sparkle particles
-  particles.forEach(p => {
-    p.life -= 1;
-    p.x += p.vx; p.y += p.vy; p.vy += 0.02;
-  });
-  particles = particles.filter(p => p.life > 0);
-  particles.forEach(p => {
-    ictx.globalAlpha = Math.max(p.life / p.maxLife, 0);
-    ictx.fillStyle = p.color;
-    ictx.beginPath();
-    ictx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-    ictx.fill();
-  });
-  ictx.globalAlpha = 1;
+  const cx = inkCanvas.width / 2, cy = inkCanvas.height / 2;
+  for (let i = 0; i < KALEIDO_FOLDS; i++){
+    const angle = (Math.PI * 2 / KALEIDO_FOLDS) * i;
+    for (let mirror = 0; mirror < 2; mirror++){
+      ictx.save();
+      ictx.translate(cx, cy);
+      ictx.rotate(angle);
+      if (mirror) ictx.scale(-1, 1);
+      ictx.translate(-cx, -cy);
+      ictx.beginPath();
+      ictx.moveTo(x0, y0);
+      ictx.lineTo(x1, y1);
+      ictx.stroke();
+      ictx.restore();
+    }
+  }
+  ictx.shadowBlur = 0;
 }
-function spawnSparkle(x, y, color){
-  for (let i = 0; i < 2; i++){
+
+function eraseAt(x, y, radius){
+  ictx.save();
+  ictx.globalCompositeOperation = 'destination-out';
+  ictx.beginPath();
+  ictx.arc(x, y, radius, 0, Math.PI * 2);
+  ictx.fill();
+  ictx.restore();
+}
+
+// ---------- Particles (ephemeral, drawn on the overlay layer) ----------
+let particles = [];
+function spawnSparkle(x, y, color, count = 2){
+  for (let i = 0; i < count; i++){
     particles.push({
       x, y,
-      vx: (Math.random() - 0.5) * 1.6,
-      vy: (Math.random() - 0.5) * 1.6 - 0.4,
+      vx: (Math.random() - 0.5) * 1.8,
+      vy: (Math.random() - 0.5) * 1.8 - 0.5,
       size: Math.random() * 2 + 0.6,
       life: 24, maxLife: 24,
       color
     });
   }
 }
+function updateAndDrawParticles(){
+  particles.forEach(p => {
+    p.life -= 1;
+    p.x += p.vx; p.y += p.vy; p.vy += 0.02;
+  });
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p => {
+    octx.globalAlpha = Math.max(p.life / p.maxLife, 0);
+    octx.fillStyle = p.color;
+    octx.beginPath();
+    octx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    octx.fill();
+  });
+  octx.globalAlpha = 1;
+}
 
 // ---------- Gesture detection ----------
-// MediaPipe landmark indices we care about
 const TIP = { thumb: 4, index: 8, middle: 12, ring: 16, pinky: 20 };
 const PIP = { index: 6, middle: 10, ring: 14, pinky: 18 };
 
 function isExtended(lm, tipIdx, pipIdx){
-  // In image-normalized coords, y grows downward. A finger pointing "up"
-  // (extended, hand held naturally upright) has its tip above its pip joint.
   return lm[tipIdx].y < lm[pipIdx].y - 0.02;
 }
 
@@ -206,18 +225,26 @@ function detectGesture(lm){
   return 'hover';
 }
 
-// gesture state / debouncing
-let lastGesture = null;
-let fistHoldStart = null;
-let cycleArmed = true; // only cycle once per gesture entry, not every frame
-const FIST_HOLD_MS = 850;
-
 function gestureLabel(g){
   return { draw: 'drawing ☝️', hover: 'hover ✌️', cycle: 'cycle colour 🤟',
            erase: 'erase 🖐️', fist: 'clear? ✊', none: '—' }[g] || '—';
 }
 
-// ---------- FPS ----------
+// ---------- Shared state between MediaPipe callback and the render loop ----------
+let latestGesture = null;      // gesture MediaPipe most recently reported
+let handPresent = false;
+let targetX = 0, targetY = 0;   // raw fingertip position from the latest detection
+let smoothX = 0, smoothY = 0;   // interpolated position the render loop actually draws with
+let hasSmoothPos = false;
+let prevSmoothX = 0, prevSmoothY = 0;
+let latestLandmarks = null;
+
+let cycleArmed = true;
+let fistHoldStart = null;
+const FIST_HOLD_MS = 850;
+let wasDrawing = false;
+
+// ---------- FPS (tracking detections/sec, not render fps) ----------
 let frameTimes = [];
 function tickFps(){
   const now = performance.now();
@@ -250,60 +277,109 @@ function ensureHands(){
   return hands;
 }
 
+// This runs at MediaPipe's own detection rate (~15-25fps typically on CPU).
+// It only updates shared state — all drawing happens in the render loop below,
+// decoupled and running at a steady 60fps regardless of detection rate.
 function onResults(results){
   tickFps();
-  resizeCanvases();
-  octx.clearRect(0, 0, overlay.width, overlay.height);
 
   const w = overlay.width, h = overlay.height;
-  const hasHand = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
+  handPresent = !!(results.multiHandLandmarks && results.multiHandLandmarks.length > 0);
 
-  if (!hasHand){
-    gestureReadout.textContent = '—';
-    endStroke();
-    lastGesture = null;
+  if (!handPresent){
+    latestGesture = null;
+    latestLandmarks = null;
     fistHoldStart = null;
-    renderInk();
     return;
   }
 
   const lm = results.multiHandLandmarks[0];
+  latestLandmarks = lm;
+  latestGesture = detectGesture(lm);
 
-  if (showSkeleton && window.drawConnectors){
-    drawConnectors(octx, lm, HAND_CONNECTIONS, { color: 'rgba(212,175,106,0.55)', lineWidth: 2 });
-    drawLandmarks(octx, lm, { color: 'rgba(95,184,172,0.8)', radius: 2.5 });
+  const tip = lm[TIP.index];
+  targetX = tip.x * w;
+  targetY = tip.y * h;
+}
+
+// ---------- Render loop: smoothing, drawing, effects — all at 60fps ----------
+let lastTick = null;
+
+function tick(now){
+  requestAnimationFrame(tick);
+  resizeCanvases();
+
+  if (lastTick === null) lastTick = now;
+  const dt = Math.min(now - lastTick, 50); // clamp so a tab pause doesn't cause a huge jump
+  lastTick = now;
+
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+
+  if (!handPresent){
+    gestureReadout.textContent = '—';
+    hasSmoothPos = false;
+    wasDrawing = false;
+    updateAndDrawParticles();
+    return;
   }
 
-  const gesture = detectGesture(lm);
-  gestureReadout.textContent = gestureLabel(gesture);
+  const gestureText = gestureLabel(latestGesture);
+  if (gestureText !== gestureReadout.textContent){
+    gestureReadout.textContent = gestureText;
+    gestureReadout.classList.remove('pulse');
+    void gestureReadout.offsetWidth; // restart the CSS animation
+    gestureReadout.classList.add('pulse');
+  }
 
-  // fingertip in canvas pixel space (landmarks are 0..1 normalized, already
-  // in the mirrored video's coordinate frame since MediaPipe reads the raw
-  // <video> element which we also mirror visually via CSS — both canvases
-  // share that same transform, so we draw in the SAME unmirrored space and
-  // let CSS mirror everything together)
-  const tip = lm[TIP.index];
-  const x = tip.x * w;
-  const y = tip.y * h;
+  // exponential smoothing toward the latest detected fingertip position —
+  // this both fills in the gaps between detections (buttery motion) and
+  // damps hand-tracking jitter, for free
+  if (!hasSmoothPos){
+    smoothX = targetX; smoothY = targetY;
+    hasSmoothPos = true;
+  }
+  const smoothing = 1 - Math.pow(0.001, dt / 1000); // framerate-independent lerp factor
+  prevSmoothX = smoothX; prevSmoothY = smoothY;
+  smoothX += (targetX - smoothX) * smoothing;
+  smoothY += (targetY - smoothY) * smoothing;
 
-  if (gesture !== 'cycle') cycleArmed = true;
+  if (latestGesture !== 'cycle') cycleArmed = true;
 
-  switch(gesture){
+  // ink-dissolve effect: wash a faint layer of background colour over the
+  // whole canvas each frame so old strokes gradually fade to black
+  if (fadeMode){
+    ictx.save();
+    ictx.globalCompositeOperation = 'source-over';
+    ictx.fillStyle = 'rgba(20, 16, 28, 0.02)';
+    ictx.fillRect(0, 0, inkCanvas.width, inkCanvas.height);
+    ictx.restore();
+  }
+
+  switch (latestGesture){
     case 'draw': {
-      if (lastGesture !== 'draw') beginStroke(x, y, INKS[inkIndex].hex, brushWidth);
-      else extendStroke(x, y);
-      spawnSparkle(x, y, INKS[inkIndex].hex);
+      const dist = Math.hypot(smoothX - prevSmoothX, smoothY - prevSmoothY);
+      const speed = dist / Math.max(dt, 1); // px per ms
+      // faster strokes taper thinner, slow strokes lay down more ink —
+      // a rough approximation of a real calligraphy nib
+      const dynamicWidth = Math.max(brushWidth * 0.35, Math.min(brushWidth * 1.6, brushWidth * (1.5 - speed * 6)));
+      const color = INKS[inkIndex].hex;
+
+      if (wasDrawing){
+        drawSegment(prevSmoothX, prevSmoothY, smoothX, smoothY, color, dynamicWidth);
+      }
+      spawnSparkle(smoothX, smoothY, color, dist > 1 ? 2 : 1);
+      wasDrawing = true;
       fistHoldStart = null;
       break;
     }
     case 'erase': {
-      endStroke();
-      eraseNear(x, y, brushWidth * 3.2);
+      eraseAt(smoothX, smoothY, brushWidth * 3.2);
+      wasDrawing = false;
       fistHoldStart = null;
       break;
     }
     case 'cycle': {
-      endStroke();
+      wasDrawing = false;
       if (cycleArmed){
         setInk((inkIndex + 1) % INKS.length);
         cycleArmed = false;
@@ -312,9 +388,9 @@ function onResults(results){
       break;
     }
     case 'fist': {
-      endStroke();
-      if (fistHoldStart === null) fistHoldStart = performance.now();
-      else if (performance.now() - fistHoldStart > FIST_HOLD_MS){
+      wasDrawing = false;
+      if (fistHoldStart === null) fistHoldStart = now;
+      else if (now - fistHoldStart > FIST_HOLD_MS){
         clearAll();
         fistHoldStart = null;
       }
@@ -322,14 +398,49 @@ function onResults(results){
     }
     case 'hover':
     default: {
-      endStroke();
+      wasDrawing = false;
       fistHoldStart = null;
       break;
     }
   }
 
-  lastGesture = gesture;
-  renderInk();
+  // ---------- overlay: skeleton, cursor ring, fist-hold progress ----------
+  if (showSkeleton && latestLandmarks && window.drawConnectors){
+    drawConnectors(octx, latestLandmarks, HAND_CONNECTIONS, { color: 'rgba(212,175,106,0.55)', lineWidth: 2 });
+    drawLandmarks(octx, latestLandmarks, { color: 'rgba(95,184,172,0.8)', radius: 2.5 });
+  }
+
+  drawCursorRing(smoothX, smoothY, latestGesture);
+
+  updateAndDrawParticles();
+}
+
+function drawCursorRing(x, y, gesture){
+  octx.save();
+  if (gesture === 'fist' && fistHoldStart !== null){
+    const progress = Math.min((performance.now() - fistHoldStart) / FIST_HOLD_MS, 1);
+    octx.strokeStyle = 'rgba(212,175,106,0.9)';
+    octx.lineWidth = 3;
+    octx.beginPath();
+    octx.arc(x, y, 22, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+    octx.stroke();
+    octx.fillStyle = 'rgba(212,175,106,0.15)';
+    octx.beginPath();
+    octx.arc(x, y, 22, 0, Math.PI * 2);
+    octx.fill();
+  } else {
+    const color = gesture === 'draw' ? INKS[inkIndex].hex
+                : gesture === 'erase' ? 'rgba(242,233,216,0.8)'
+                : 'rgba(242,233,216,0.5)';
+    octx.strokeStyle = color;
+    octx.lineWidth = gesture === 'draw' ? 2 : 1.4;
+    if (gesture === 'hover') octx.setLineDash([3, 4]);
+    octx.beginPath();
+    octx.arc(x, y, gesture === 'erase' ? 16 : 8, 0, Math.PI * 2);
+    octx.stroke();
+    octx.setLineDash([]);
+  }
+  octx.restore();
 }
 
 // ---------- Camera bootstrap ----------
@@ -351,6 +462,7 @@ startBtn.addEventListener('click', async () => {
     await cameraUtil.start();
     loadingCard.hidden = true;
     resizeCanvases();
+    requestAnimationFrame(tick);
   } catch (err){
     loadingCard.hidden = true;
     permissionCard.hidden = false;
