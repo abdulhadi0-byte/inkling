@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 220" width="900" height="220">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1c1526"/>
+      <stop offset="100%" stop-color="#0e0a15"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#d4af6a"/>
+      <stop offset="100%" stop-color="#5fb8ac"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="900" height="220" fill="url(#bg)"/>
+  <rect width="900" height="220" fill="none" stroke="#d4af6a" stroke-opacity="0.25" stroke-width="1"/>
+
+  <!-- wordmark -->
+  <text x="60" y="95" font-family="Georgia, 'Times New Roman', serif" font-style="italic"
+        font-size="56" fill="#f2e9d8">Inkling</text>
+  <text x="63" y="122" font-family="Courier New, monospace" font-size="14" letter-spacing="3"
+        fill="#5fb8ac">WRITE ON THIN AIR</text>
+
+  <!-- animated ink stroke, drawn by animating stroke-dashoffset -->
+  <path id="inkPath" d="M 60 165 C 160 205, 230 130, 320 165 S 470 210, 560 160 S 700 120, 800 168"
+        fill="none" stroke="url(#ink)" stroke-width="4" stroke-linecap="round"
+        filter="url(#glow)" pathLength="1000" stroke-dasharray="1000" stroke-dashoffset="1000">
+    <animate attributeName="stroke-dashoffset" from="1000" to="0" dur="2.6s"
+             begin="0s;inkPath.end+1.4s" fill="freeze"/>
+  </path>
+
+  <!-- glowing tip that travels along the same path as the ink is "written" -->
+  <circle r="6" fill="#f2e9d8" filter="url(#glow)">
+    <animateMotion dur="2.6s" begin="0s;inkPath.end+1.4s" fill="freeze"
+      path="M 60 165 C 160 205, 230 130, 320 165 S 470 210, 560 160 S 700 120, 800 168"/>
+    <animate attributeName="opacity" values="1;1;0" keyTimes="0;0.9;1" dur="2.6s"
+             begin="0s;inkPath.end+1.4s" fill="freeze"/>
+  </circle>
+
+  <!-- soft ambient pulse -->
+  <circle cx="830" cy="45" r="3" fill="#5fb8ac" opacity="0.8">
+    <animate attributeName="r" values="2;5;2" dur="2.4s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.4;1;0.4" dur="2.4s" repeatCount="indefinite"/>
+  </circle>
+</svg>
