@@ -164,7 +164,12 @@ html, body{
 .hud-top-left{ top: 14px; left: 14px; }
 .hud-top-right{ top: 14px; right: 14px; align-items: flex-end; }
 .hud-label{ font-size: 0.62rem; letter-spacing: 0.12em; color: var(--parchment-dim); text-transform: uppercase; }
-.hud-value{ font-size: 1rem; color: var(--brass-bright); }
+.hud-value{ font-size: 1rem; color: var(--brass-bright); display: inline-block; }
+.hud-value.pulse{ animation: hudPulse 0.35s ease; }
+@keyframes hudPulse{
+  0%{ transform: scale(1.35); color: var(--verdigris); }
+  100%{ transform: scale(1); color: var(--brass-bright); }
+}
 
 /* ---------- Floating palette / toolbar ---------- */
 .palette{
