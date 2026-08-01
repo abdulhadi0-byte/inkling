@@ -227,18 +227,28 @@ function tickFps(){
 }
 
 // ---------- MediaPipe Hands setup ----------
-const hands = new Hands({
-  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-});
-hands.setOptions({
-  maxNumHands: 1,
-  modelComplexity: 1,
-  minDetectionConfidence: 0.7,
-  minTrackingConfidence: 0.6,
-});
-hands.onResults(onResults);
-
+// Created lazily (on button click) rather than at script load time, so that
+// a slow/blocked CDN script can't silently prevent the button from working.
+let hands = null;
 let cameraUtil = null;
+
+function ensureHands(){
+  if (hands) return hands;
+  if (typeof Hands === 'undefined'){
+    throw new Error('MediaPipe Hands failed to load from the CDN.');
+  }
+  hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.6,
+  });
+  hands.onResults(onResults);
+  return hands;
+}
 
 function onResults(results){
   tickFps();
@@ -327,8 +337,14 @@ startBtn.addEventListener('click', async () => {
   permissionCard.hidden = true;
   loadingCard.hidden = false;
   try{
+    const handsInstance = ensureHands(); // throws early, clear message, if the CDN script never loaded
+
+    if (typeof Camera === 'undefined'){
+      throw new Error('CAMERA_UTIL_MISSING');
+    }
+
     cameraUtil = new Camera(video, {
-      onFrame: async () => { await hands.send({ image: video }); },
+      onFrame: async () => { await handsInstance.send({ image: video }); },
       width: 1280,
       height: 960,
     });
@@ -338,10 +354,17 @@ startBtn.addEventListener('click', async () => {
   } catch (err){
     loadingCard.hidden = true;
     permissionCard.hidden = false;
-    permissionCard.querySelector('.permission-title').textContent = 'Camera access denied';
-    permissionCard.querySelector('.permission-body').textContent =
-      'Inkling can\'t draw without seeing your hand. Check your browser\'s camera permissions and try again.';
-    console.error('Camera error:', err);
+    console.error('Inkling start error:', err);
+
+    if (err && (err.message === 'MediaPipe Hands failed to load from the CDN.' || err.message === 'CAMERA_UTIL_MISSING')){
+      permissionCard.querySelector('.permission-title').textContent = "Couldn't load the hand-tracking library";
+      permissionCard.querySelector('.permission-body').textContent =
+        'A required script didn\'t load from the CDN — try disabling ad blockers/extensions for this page, checking your connection, or reloading.';
+    } else {
+      permissionCard.querySelector('.permission-title').textContent = 'Camera access denied';
+      permissionCard.querySelector('.permission-body').textContent =
+        'Inkling can\'t draw without seeing your hand. Check your browser\'s camera permissions and try again.';
+    }
   }
 });
 
