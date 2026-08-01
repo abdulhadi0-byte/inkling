@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Inkling — Air Writing Studio</title>
+<meta name="description" content="Write on thin air. A webcam-powered ink canvas that follows your fingertip through space." />
+
+<!-- Fonts: a calligraphic display face + a clean technical face for UI/data -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;1,9..144,500&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="grain-overlay"></div>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <h1 class="wordmark">Inkling</h1>
+    <p class="tagline">write on thin air</p>
+  </div>
+  <button id="helpToggle" class="seal-button" title="How it works">?</button>
+</header>
+
+<main class="stage">
+
+  <!-- Camera + canvas stack -->
+  <div class="viewport">
+    <video id="webcam" playsinline autoplay muted></video>
+    <canvas id="overlay"></canvas>
+    <canvas id="inkCanvas"></canvas>
+
+    <div id="permissionCard" class="permission-card">
+      <p class="permission-title">Inkling needs your camera</p>
+      <p class="permission-body">Your video never leaves this browser tab — hand tracking runs entirely on your device.</p>
+      <button id="startBtn" class="ink-button primary">Dip the quill &amp; begin</button>
+    </div>
+
+    <div id="loadingCard" class="permission-card" hidden>
+      <p class="permission-title">Warming up the hand model…</p>
+      <div class="spinner"></div>
+    </div>
+
+    <!-- gesture / status readout -->
+    <div class="hud hud-top-left">
+      <span class="hud-label">gesture</span>
+      <span id="gestureReadout" class="hud-value">—</span>
+    </div>
+
+    <div class="hud hud-top-right">
+      <span class="hud-label">fps</span>
+      <span id="fpsReadout" class="hud-value">0</span>
+    </div>
+
+  </div>
+
+  <!-- floating ink palette / toolbar -->
+  <div class="palette" id="palette">
+    <div class="palette-group swatches" id="swatches"><!-- injected --></div>
+
+    <div class="palette-group brush">
+      <label for="brushSize" class="palette-label">nib</label>
+      <input type="range" id="brushSize" min="2" max="26" value="8" />
+    </div>
+
+    <div class="palette-group toggles">
+      <button id="skeletonToggle" class="chip-button" title="Show hand skeleton">skeleton</button>
+      <button id="trailToggle" class="chip-button active" title="Ink glow trail">glow</button>
+    </div>
+
+    <div class="palette-group actions">
+      <button id="clearBtn" class="ink-button ghost">clear</button>
+      <button id="saveBtn" class="ink-button primary">save PNG</button>
+    </div>
+  </div>
+
+</main>
+
+<!-- Help / instructions drawer -->
+<div id="helpDrawer" class="help-drawer" hidden>
+  <div class="help-card">
+    <button id="helpClose" class="help-close">&times;</button>
+    <h2>The hand-signs</h2>
+    <ul class="gesture-list">
+      <li><span class="gesture-glyph">☝️</span><div><strong>One finger up</strong><br>Draw — your index fingertip becomes the nib.</div></li>
+      <li><span class="gesture-glyph">✌️</span><div><strong>Two fingers</strong><br>Hover — move the cursor without laying ink.</div></li>
+      <li><span class="gesture-glyph">🤟</span><div><strong>Three fingers</strong><br>Cycle the ink colour.</div></li>
+      <li><span class="gesture-glyph">🖐️</span><div><strong>Open palm</strong><br>Eraser — wipe the canvas near your hand.</div></li>
+      <li><span class="gesture-glyph">✊</span><div><strong>Fist, held a beat</strong><br>Clear the whole page.</div></li>
+    </ul>
+    <p class="help-footnote">Works best in a well-lit room, hand roughly 30–70cm from the camera.</p>
+  </div>
+</div>
+
+<footer class="colophon">
+  <span>Inkling · runs entirely in your browser · <a href="https://github.com/" id="repoLink" target="_blank" rel="noopener">source</a></span>
+</footer>
+
+<!-- MediaPipe Hands (CDN, no build step) -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script src="script.js"></script>
+</body>
+</html>

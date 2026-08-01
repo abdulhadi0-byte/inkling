@@ -1,0 +1,265 @@
+/* ===================================================================
+   Inkling — token system
+   Palette: deep plum ink-well background, warm brass accent,
+   parchment cream text, two ink-trail hues (brass + verdigris teal).
+=================================================================== */
+:root{
+  --plum-950: #14101c;
+  --plum-900: #1c1526;
+  --plum-800: #261d33;
+  --plum-700: #342842;
+  --parchment: #f2e9d8;
+  --parchment-dim: #cfc3a8;
+  --brass: #d4af6a;
+  --brass-bright: #e8c98a;
+  --verdigris: #5fb8ac;
+  --rose: #c97b6d;
+  --ink-shadow: rgba(20, 16, 28, 0.55);
+
+  --font-display: "Fraunces", "Iowan Old Style", serif;
+  --font-ui: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+*{ box-sizing: border-box; }
+
+html, body{
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: radial-gradient(ellipse at 30% -10%, var(--plum-800), var(--plum-950) 60%);
+  color: var(--parchment);
+  font-family: var(--font-ui);
+  overflow-x: hidden;
+}
+
+::selection{ background: var(--brass); color: var(--plum-950); }
+
+/* subtle paper grain so the dark background doesn't feel flat/AI-default */
+.grain-overlay{
+  position: fixed; inset: 0; pointer-events: none; z-index: 999;
+  opacity: 0.05; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---------- Masthead ---------- */
+.masthead{
+  display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 2.2rem clamp(1.2rem, 4vw, 3rem) 0.6rem;
+}
+.wordmark{
+  font-family: var(--font-display);
+  font-weight: 500; font-style: italic;
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  margin: 0; line-height: 0.9;
+  color: var(--parchment);
+  letter-spacing: 0.01em;
+}
+.tagline{
+  margin: 0.3rem 0 0 0.15rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: lowercase;
+  color: var(--brass);
+}
+.masthead-inner{ display:flex; flex-direction:column; }
+
+.seal-button{
+  width: 42px; height: 42px; border-radius: 50%;
+  background: linear-gradient(155deg, var(--brass), #a97e3f);
+  color: var(--plum-950); border: none; font-family: var(--font-display);
+  font-weight: 700; font-size: 1.1rem; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.4);
+  transition: transform 0.15s ease;
+}
+.seal-button:hover{ transform: scale(1.08) rotate(-6deg); }
+.seal-button:focus-visible, button:focus-visible, input:focus-visible{
+  outline: 2px solid var(--verdigris); outline-offset: 2px;
+}
+
+/* ---------- Stage / viewport ---------- */
+.stage{
+  padding: 1rem clamp(1.2rem, 4vw, 3rem) 2.5rem;
+  display: flex; flex-direction: column; align-items: center; gap: 1.1rem;
+}
+
+.viewport{
+  position: relative;
+  width: min(1100px, 100%);
+  aspect-ratio: 4 / 3;
+  border-radius: 22px;
+  overflow: hidden;
+  background: var(--plum-950);
+  box-shadow:
+    0 0 0 1px rgba(212,175,106,0.18),
+    0 30px 60px -20px rgba(0,0,0,0.65),
+    0 0 90px -30px rgba(212,175,106,0.25);
+}
+
+#webcam{
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* mirror for natural "looking in a mirror" feel */
+  filter: saturate(0.55) brightness(0.62) contrast(1.05) sepia(0.18);
+}
+#overlay, #inkCanvas{
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  transform: scaleX(-1);
+}
+#inkCanvas{ z-index: 3; }
+#overlay{ z-index: 2; }
+
+/* soft vignette so the parchment/ink feeling reads even over live video */
+.viewport::after{
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 4;
+  box-shadow: inset 0 0 140px 40px rgba(20,16,28,0.75);
+}
+
+/* ---------- Permission / loading cards ---------- */
+.permission-card{
+  position: absolute; inset: 0; z-index: 10;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1rem; text-align: center; padding: 2rem;
+  background: radial-gradient(ellipse at center, rgba(38,29,51,0.92), rgba(20,16,28,0.97));
+}
+.permission-title{
+  font-family: var(--font-display); font-style: italic; font-weight: 500;
+  font-size: clamp(1.3rem, 3vw, 1.8rem); margin: 0;
+}
+.permission-body{
+  max-width: 34ch; margin: 0; color: var(--parchment-dim); font-size: 0.92rem;
+}
+.spinner{
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 3px solid rgba(212,175,106,0.25); border-top-color: var(--brass);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin{ to{ transform: rotate(360deg); } }
+
+.ink-button{
+  font-family: var(--font-ui); font-weight: 500; font-size: 0.92rem;
+  padding: 0.75rem 1.5rem; border-radius: 999px; border: none; cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.ink-button.primary{
+  background: linear-gradient(155deg, var(--brass-bright), var(--brass));
+  color: var(--plum-950);
+  box-shadow: 0 6px 18px rgba(212,175,106,0.3);
+}
+.ink-button.ghost{
+  background: transparent; color: var(--parchment);
+  border: 1px solid rgba(242,233,216,0.28);
+}
+.ink-button:hover{ transform: translateY(-1px); }
+.ink-button:active{ transform: translateY(0); }
+
+/* ---------- HUD readouts ---------- */
+.hud{
+  position: absolute; z-index: 6; display: flex; flex-direction: column;
+  font-family: var(--font-mono); padding: 0.5rem 0.8rem;
+  background: rgba(20,16,28,0.55); border: 1px solid rgba(212,175,106,0.25);
+  border-radius: 10px; backdrop-filter: blur(6px);
+}
+.hud-top-left{ top: 14px; left: 14px; }
+.hud-top-right{ top: 14px; right: 14px; align-items: flex-end; }
+.hud-label{ font-size: 0.62rem; letter-spacing: 0.12em; color: var(--parchment-dim); text-transform: uppercase; }
+.hud-value{ font-size: 1rem; color: var(--brass-bright); }
+
+/* ---------- Floating palette / toolbar ---------- */
+.palette{
+  width: min(1100px, 100%);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 1.4rem;
+  padding: 0.9rem 1.3rem;
+  background: linear-gradient(180deg, var(--plum-800), var(--plum-900));
+  border: 1px solid rgba(212,175,106,0.2);
+  border-radius: 18px;
+  box-shadow: 0 20px 40px -24px rgba(0,0,0,0.6);
+}
+.palette-group{ display: flex; align-items: center; gap: 0.6rem; }
+.palette-label{
+  font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.1em;
+  color: var(--parchment-dim); text-transform: uppercase;
+}
+
+.swatches{ gap: 0.5rem; }
+.swatch{
+  width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+  border: 2px solid rgba(242,233,216,0.15);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  position: relative;
+}
+.swatch:hover{ transform: scale(1.15); }
+.swatch.active{
+  border-color: var(--parchment);
+  box-shadow: 0 0 0 3px rgba(212,175,106,0.25);
+}
+
+input[type="range"]{
+  -webkit-appearance: none; width: 120px; height: 4px; border-radius: 2px;
+  background: rgba(242,233,216,0.2); outline: none;
+}
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--brass-bright); cursor: pointer;
+  box-shadow: 0 0 0 4px rgba(212,175,106,0.18);
+}
+
+.chip-button{
+  font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.04em;
+  padding: 0.4rem 0.75rem; border-radius: 999px; cursor: pointer;
+  background: transparent; color: var(--parchment-dim);
+  border: 1px solid rgba(242,233,216,0.22);
+  transition: all 0.15s ease;
+}
+.chip-button.active, .chip-button:hover{
+  color: var(--plum-950); background: var(--verdigris); border-color: var(--verdigris);
+}
+
+.palette-group.actions{ margin-left: auto; }
+
+/* ---------- Help drawer ---------- */
+.help-drawer{
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(20,16,28,0.72); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+}
+.help-card{
+  position: relative; max-width: 460px; width: 100%;
+  background: linear-gradient(180deg, var(--plum-800), var(--plum-900));
+  border: 1px solid rgba(212,175,106,0.3);
+  border-radius: 20px; padding: 2rem;
+  box-shadow: 0 40px 80px -30px rgba(0,0,0,0.7);
+}
+.help-card h2{
+  font-family: var(--font-display); font-style: italic; font-weight: 500;
+  margin: 0 0 1.2rem; font-size: 1.6rem;
+}
+.gesture-list{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1rem; }
+.gesture-list li{ display: flex; gap: 0.9rem; align-items: flex-start; font-size: 0.9rem; color: var(--parchment-dim); line-height: 1.4; }
+.gesture-list strong{ color: var(--parchment); font-weight: 600; }
+.gesture-glyph{ font-size: 1.5rem; line-height: 1; }
+.help-footnote{ margin: 1.4rem 0 0; font-size: 0.78rem; color: var(--parchment-dim); font-style: italic; }
+.help-close{
+  position: absolute; top: 1rem; right: 1.1rem; background: none; border: none;
+  color: var(--parchment-dim); font-size: 1.4rem; cursor: pointer; line-height: 1;
+}
+.help-close:hover{ color: var(--brass-bright); }
+
+/* ---------- Footer ---------- */
+.colophon{
+  text-align: center; padding: 0 1rem 2rem; font-family: var(--font-mono);
+  font-size: 0.72rem; color: var(--parchment-dim); letter-spacing: 0.03em;
+}
+.colophon a{ color: var(--brass); text-decoration: none; }
+.colophon a:hover{ text-decoration: underline; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 640px){
+  .palette{ justify-content: center; }
+  .palette-group.actions{ margin-left: 0; width: 100%; justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .seal-button, .ink-button, .swatch, .spinner{ transition: none; animation: none; }
+}
