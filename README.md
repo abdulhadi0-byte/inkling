@@ -1,4 +1,4 @@
-<img src="assets/banner.svg" alt="Inkling — write on thin air" width="100%" />
+<img src="assets/your-image.png" alt="description here" width="700" />
 
 <p align="center">
   <img src="https://img.shields.io/badge/hosted%20on-GitHub%20Pages-121212?style=flat-square&logo=github" alt="Hosted on GitHub Pages" />
