@@ -224,6 +224,19 @@ input[type="range"]::-webkit-slider-thumb{
   background: rgba(20,16,28,0.72); backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center; padding: 1.5rem;
 }
+.help-drawer[hidden]{
+  display: none; /* higher specificity than the plain class rule above,
+                     so the hidden attribute actually hides it again */
+}
+
+/* Belt-and-braces: guarantee [hidden] always wins over any class-based
+   display rule (e.g. .permission-card, .help-drawer). Without this,
+   an element with both a "display: flex" class AND the hidden attribute
+   stays visible and can silently sit on top of, and intercept clicks
+   meant for, whatever's underneath it. */
+[hidden]{
+  display: none !important;
+}
 .help-card{
   position: relative; max-width: 460px; width: 100%;
   background: linear-gradient(180deg, var(--plum-800), var(--plum-900));
